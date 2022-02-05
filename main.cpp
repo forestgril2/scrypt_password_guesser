@@ -36,12 +36,14 @@ std::string exec(const char* cmd) {
 std::set<std::wstring> variantsOneShift(std::wstring&& base)
 {
     auto shift = [](int c) {
+        wchar_t w = c;
         if (::iswlower(c))
             return (int)::towupper(c);
         if (::iswupper(c))
             return (int)::tolower(c);
-        if (::iswdigit(c))
+        if (::iswdigit(c) || special.contains(c))
             return (int)special.at(c);
+
         return (int)'+';
     };
 
