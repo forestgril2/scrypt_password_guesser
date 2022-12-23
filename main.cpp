@@ -135,7 +135,7 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
 
 void worker_thread(std::queue<std::wstring>& var, bool& done)
 {
-    while (true)
+    while (!done)
     {
         std::unique_lock lock(var_mutex);
         var_cv.wait(lock, [&var, done]{ return !var.empty() || done; });
@@ -147,7 +147,7 @@ void worker_thread(std::queue<std::wstring>& var, bool& done)
         
         if (var.empty())
         {
-            continue;
+            break;
         }
 
         auto v = var.front();
@@ -161,14 +161,14 @@ void worker_thread(std::queue<std::wstring>& var, bool& done)
         const auto result = exec((command + vstr).c_str());
         if (result.starts_with("Password verified.\n"))
         {
-            std::cout << "PASS" << std::endl;
+            std::cout << "PASS   : " << vstr << std::endl;
             done = true;
             var_cv.notify_all();
-            break;
+            return;
         }
         else
         {
-            std::cout << result << std::endl;
+            std::cout << "NO PASS: " << vstr << std::endl;
         }
     }
 }
@@ -206,7 +206,9 @@ int main(int argc, char *argv[])
         threads.emplace_back(worker_thread, std::ref(variants_queue), std::ref(done));
     }
 
-    // Add items to the queue
+    std::cout << "Press enter to start" << std::endl;
+    std::cin.get();    // Add items to the queue
+
     {
         std::lock_guard<std::mutex> lock(var_mutex);
         for (auto v : variants)
@@ -216,27 +218,13 @@ int main(int argc, char *argv[])
     }
     // Let know about the queue size and wait for user input ( enter press)
     std::cout << "Queue size: " << variants_queue.size() << std::endl;
-    std::cout << "Press enter to start" << std::endl;
-    std::cin.get();
+
 
     var_cv.notify_all();
 
-    for (auto v : variants)
+    for (auto& t : threads)
     {
-        //Convert back to normal string
-        const std::string vstr = wide_to_normal(v);
-
-        std::cout << "Trying: " << vstr << std::endl;
-        const auto result = exec((command + vstr).c_str());
-        if (result.starts_with("Password verified.\n"))
-        {
-            std::cout << "PASS" << std::endl;
-            break;
-        }
-        else
-        {
-            std::cout << result << std::endl;
-        }
+        t.join();
     }
 
     return 0;
