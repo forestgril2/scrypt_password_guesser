@@ -13,6 +13,19 @@
 #include <string>
 #include <vector>
 
+#include <iostream>
+#include <string>
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+
+const int NUM_THREADS = 12;
+
+std::mutex var_mutex;
+std::condition_variable var_cv;
+std::vector<std::thread> threads;
+
 std::map<wchar_t, wchar_t> special = {
     {L'0', L')'},
     {L'1', L'!'},
@@ -93,7 +106,7 @@ std::set<std::wstring> variants(std::wstring&& base)
     return variants;
 };
 
-std::set<std::wstring> variants(const std::wstring& base)
+std::set<std::wstring> pass_variants(const std::wstring& base)
 {
     return variants(std::wstring(base));
 };
@@ -113,33 +126,6 @@ std::string wide_to_normal(const std::wstring& wide_string) {
   }
 }
 
-std::string wide_string_to_normal_string(const std::wstring& wstr)
-{
-    std::string str;
-    for (wchar_t wc : wstr)
-    {
-        char mb[MB_LEN_MAX];
-        int bytes_consumed = std::wctomb(mb, wc);
-        if (bytes_consumed < 0)
-        {
-            // Error occurred
-            break;
-        }
-        str += mb;
-    }
-    return str;
-}
-
-int main(int argc, char *argv[])
-{
- // Set the current locale to UTF-8
-  std::setlocale(LC_ALL, "en_US.UTF-8");
-
-    // invert special mapping and attach it to the main map
-    std::map<wchar_t, wchar_t> special_inv; // = special;
-    for (auto& [k, v] : special)
-        special_inv[v] = k;
-    special.insert(special_inv.begin(), special_inv.end()); 
     
 #ifdef _WIN32
 const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py D:/Projects/scrypt_password_guesser/UTC--2022-10-04T08-04-22.071Z--54278f2fe320bec308cefc4640e50479e9ab1791 "; //oaeóąę#$*
@@ -147,21 +133,96 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
     const std::string command = "python3 /home/space/projects/decrypt-ethereum-keyfile/main.py /home/space/projects/scrypt_password_guesser/UTC--2022-01-22T23-28-24.373Z--013efef911d47e09b85f9df956e6565d0f828622 ";
 #endif
 
+void worker_thread(std::queue<std::wstring>& var, bool& done)
+{
+    while (true)
+    {
+        std::unique_lock lock(var_mutex);
+        var_cv.wait(lock, [&var, done]{ return !var.empty() || done; });
+        
+        if (done)
+        {
+            return;
+        }
+        
+        if (var.empty())
+        {
+            continue;
+        }
+
+        auto v = var.front();
+        var.pop();
+        lock.unlock();
+
+        // Convert back to normal string
+        const std::string vstr = wide_to_normal(v);
+
+        std::cout << "Trying: " << vstr << std::endl;
+        const auto result = exec((command + vstr).c_str());
+        if (result.starts_with("Password verified.\n"))
+        {
+            std::cout << "PASS" << std::endl;
+            done = true;
+            var_cv.notify_all();
+            break;
+        }
+        else
+        {
+            std::cout << result << std::endl;
+        }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    // Set the current locale to UTF-8
+    std::setlocale(LC_ALL, "en_US.UTF-8");
+
+    // invert digit-special mapping and attach it to the main map
+    std::map<wchar_t, wchar_t> special_inv; // = special;
+    for (auto& [k, v] : special)
+        special_inv[v] = k;
+    special.insert(special_inv.begin(), special_inv.end()); 
+
+
+    // Setup password and variants
     // const std::string pass = std::string("dupa88ąśćę#$");
     // const std::string pass = std::string("oaeóąę#$*");
     const std::string pass = std::string("oaEóąę#$8");
-    std::cout << "Init pass: " << pass << std::endl;
+    std::cout << "Initial pass: " << pass << std::endl;
 
     //Print a wide char version of the pass
     std::wstring wpass = normal_to_wide(pass);
-    std::wcout << "wpass: " << wpass    << std::endl;
+    std::wcout << "Pass as wide string: " << wpass    << std::endl;
+    // Prepare variants
+    auto variants = pass_variants(wpass);
+    std::cout << "Number of variants: " << variants.size() << std::endl;
 
-    auto var = variants(wpass);
-    //Print size of the set
-    std::cout << "Size: " << var.size() << std::endl;
-    for (auto v : var)
+    // Prepare the thread pool and the queue for the variants
+    std::queue<std::wstring> variants_queue;
+    bool done = false; 
+    for (int i = 0; i < NUM_THREADS; i++)
     {
+        threads.emplace_back(worker_thread, std::ref(variants_queue), std::ref(done));
+    }
 
+    // Add items to the queue
+    {
+        std::lock_guard<std::mutex> lock(var_mutex);
+        for (auto v : variants)
+        {
+            variants_queue.emplace(v);
+        }
+    }
+    // Let know about the queue size and wait for user input ( enter press)
+    std::cout << "Queue size: " << variants_queue.size() << std::endl;
+    std::cout << "Press enter to start" << std::endl;
+    std::cin.get();
+
+    var_cv.notify_all();
+
+    for (auto v : variants)
+    {
         //Convert back to normal string
         const std::string vstr = wide_to_normal(v);
 
@@ -173,7 +234,9 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
             break;
         }
         else
+        {
             std::cout << result << std::endl;
+        }
     }
 
     return 0;
