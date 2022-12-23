@@ -1,5 +1,8 @@
 ﻿#include <array>
+#include <algorithm>
+#include <wchar.h>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -74,6 +77,42 @@ std::set<std::string> variants(const std::string& base)
     return variants(std::string(base));
 };
 
+std::wstring normal_string_to_wide_string(const std::string& str)
+{
+    std::wstring wstr;
+    int len = std::strlen(str.c_str());
+    for (int i = 0; i < len;)
+    {
+        wchar_t wc;
+        int bytes_consumed = std::mbtowc(&wc, str.c_str() + i, len - i);
+        if (bytes_consumed < 0)
+        {
+            // Error occurred
+            break;
+        }
+        i += bytes_consumed;
+        wstr += wc;
+    }
+    return wstr;
+}
+
+std::string wide_string_to_normal_string(const std::wstring& wstr)
+{
+    std::string str;
+    for (wchar_t wc : wstr)
+    {
+        char mb[MB_LEN_MAX];
+        int bytes_consumed = std::wctomb(mb, wc);
+        if (bytes_consumed < 0)
+        {
+            // Error occurred
+            break;
+        }
+        str += mb;
+    }
+    return str;
+}
+
 int main(int argc, char *argv[])
 {
  // Set the current locale to UTF-8
@@ -93,25 +132,32 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
     const std::string pass = std::string("oaeóąę#$*");
     std::cout << "Init pass: " << pass << std::endl;
 
-    //get a wide char version of the pass
-    std::wstring wpass;
-    wpass.assign(pass.begin(), pass.end());
-    std::wcout << "wpass: " << wpass << std::endl;
-    
-    //get a copy of pass to modify
-    std::string passCopy(pass);
-    wchar_t wc;
-    std::mbstowcs(&wc, &passCopy[3], 1);  // convert to wide character
-    wc = towupper(wc);                    // convert to upper case
-    // Print wc now
-    std::wcout << "wc: " << wc << std::endl;
-    // Convert the uppercase wide character back to UTF-8
-    char utf8_char_upper[5];
-    std::wcstombs(utf8_char_upper, &wc, 5);  // convert to UTF-8
+    //Print a wide char version of the pass
+    std::wstring wpass = normal_string_to_wide_string(pass);
+    std::wcout << "wpass: " << wpass    << std::endl;
 
-    // Replace the 2nd character in the string with the uppercase version
-    passCopy[3] = utf8_char_upper[1];
-    std::cout << "Init passCopy: " << passCopy << std::endl;
+    // Make all characters uppercase in the wide string
+    std::transform(wpass.begin(), wpass.end(), wpass.begin(), ::towupper);
+    std::wcout << "wpass upper: " << wpass    << std::endl;
+
+    if (false)
+    { 
+        //get a copy of pass to modify
+        std::string passCopy(pass);
+        wchar_t wc;
+        // std::mbstowc(&wc, &passCopy[3], 1);  // convert to wide character
+        wc = towupper(wc);                    // convert to upper case
+        // Print wc now
+        std::wcout << "wc: " << wc << std::endl;
+
+        // Convert the uppercase wide character back to UTF-8
+        char utf8_char_upper[5];
+        std::wcstombs(utf8_char_upper, &wc, 5);  // convert to UTF-8
+
+        // Replace the 2nd character in the string with the uppercase version
+        passCopy[3] = utf8_char_upper[1];
+        std::cout << "Init passCopy: " << passCopy << std::endl;
+    }
 
     const auto result = exec((command + pass).c_str());
 
