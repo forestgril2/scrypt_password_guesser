@@ -75,12 +75,23 @@ std::set<std::wstring> variantsOneShift(std::wstring&& base)
 std::set<std::wstring> variants(std::wstring&& base)
 {
     // Get variants with one shift
-    return variantsOneShift(std::move(base));
+    auto variants = variantsOneShift(std::move(base));
+    // Now get variants with two shifts
+    std::set<std::wstring> twoShifts;
+    for(auto v : variants)
+    {
+        auto v2 = variantsOneShift(std::move(v));
+        twoShifts.insert(v2.begin(), v2.end());
+    }
+    //Merge them
+    variants.insert(twoShifts.begin(), twoShifts.end());
+    
     // Get variants with starting caps-lock - n signs
     // Get variants with one alt
     // Get variants with two alts
     // Get variants with double letter
     // Switch special sign with two alts
+    return variants;
 };
 
 std::set<std::wstring> variants(const std::wstring& base)
