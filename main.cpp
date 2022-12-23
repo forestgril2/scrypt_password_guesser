@@ -26,7 +26,6 @@ std::map<wchar_t, wchar_t> special = {
     {L'9', L'('},
 };
 
-//std::string exec(const wchar_t* cmd) {
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -98,24 +97,20 @@ std::set<std::wstring> variants(const std::wstring& base)
 {
     return variants(std::wstring(base));
 };
-
-std::wstring normal_string_to_wide_string(const std::string& str)
+std::wstring normal_to_wide(const std::string& str)
 {
-    std::wstring wstr;
-    int len = std::strlen(str.c_str());
-    for (int i = 0; i < len;)
-    {
-        wchar_t wc;
-        int bytes_consumed = std::mbtowc(&wc, str.c_str() + i, len - i);
-        if (bytes_consumed < 0)
-        {
-            // Error occurred
-            break;
-        }
-        i += bytes_consumed;
-        wstr += wc;
-    }
-    return wstr;
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+    return converter.from_bytes(str);
+}
+
+std::string wide_to_normal(const std::wstring& wide_string) {
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+  try {
+    return converter.to_bytes(wide_string);
+  } catch (const std::range_error&) {
+    std::cerr << "Error converting wide string to normal string: invalid character encountered" << std::endl;
+    return "";
+  }
 }
 
 std::string wide_string_to_normal_string(const std::wstring& wstr)
@@ -153,24 +148,32 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
 #endif
 
     // const std::string pass = std::string("dupa88ąśćę#$");
-    const std::string pass = std::string("oaeóąę#$*");
+    // const std::string pass = std::string("oaeóąę#$*");
+    const std::string pass = std::string("oaEóąę#$8");
     std::cout << "Init pass: " << pass << std::endl;
 
     //Print a wide char version of the pass
-    std::wstring wpass = normal_string_to_wide_string(pass);
+    std::wstring wpass = normal_to_wide(pass);
     std::wcout << "wpass: " << wpass    << std::endl;
 
-    const auto result = exec((command + pass).c_str());
-
-    if (result.starts_with("Password verified.\n"))
-        std::cout << "PASS" << std::endl;
-    else
-        std::cout << result << std::endl;
-
     auto var = variants(wpass);
+    //Print size of the set
+    std::cout << "Size: " << var.size() << std::endl;
     for (auto v : var)
     {
-        std::wcout << v << std::endl;
+
+        //Convert back to normal string
+        const std::string vstr = wide_to_normal(v);
+
+        std::cout << "Trying: " << vstr << std::endl;
+        const auto result = exec((command + vstr).c_str());
+        if (result.starts_with("Password verified.\n"))
+        {
+            std::cout << "PASS" << std::endl;
+            break;
+        }
+        else
+            std::cout << result << std::endl;
     }
 
     return 0;
