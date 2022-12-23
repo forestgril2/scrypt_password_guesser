@@ -13,7 +13,18 @@
 #include <string>
 #include <vector>
 
-static const std::map<int, int> special { {'1','!'}, {'2','@'}, {'3','#'}, {'4','$'}, {'5','%'}, {'6','^'}, {'7','&'}, {'8','*'}, {'9','('}, {'0',')'} };
+std::map<wchar_t, wchar_t> special = {
+    {L'0', L')'},
+    {L'1', L'!'},
+    {L'2', L'@'},
+    {L'3', L'#'},
+    {L'4', L'$'},
+    {L'5', L'%'},
+    {L'6', L'^'},
+    {L'7', L'&'},
+    {L'8', L'*'},
+    {L'9', L'('},
+};
 
 //std::string exec(const wchar_t* cmd) {
 std::string exec(const char* cmd) {
@@ -45,7 +56,9 @@ std::set<std::wstring> variantsOneShift(std::wstring&& base)
              return ::towlower(c);
          else if (::iswlower(c))
          return ::towupper(c);
-         else return c;
+         else if (::iswdigit(c) || special.contains(c))
+             return (wint_t)special.at(c);
+        return (wint_t)L'+';
     };
 
     std::set<std::wstring> out({base});
@@ -116,6 +129,12 @@ int main(int argc, char *argv[])
  // Set the current locale to UTF-8
   std::setlocale(LC_ALL, "en_US.UTF-8");
 
+    // invert special mapping and attach it to the main map
+    std::map<wchar_t, wchar_t> special_inv; // = special;
+    for (auto& [k, v] : special)
+        special_inv[v] = k;
+    special.insert(special_inv.begin(), special_inv.end()); 
+    
 #ifdef _WIN32
 const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py D:/Projects/scrypt_password_guesser/UTC--2022-10-04T08-04-22.071Z--54278f2fe320bec308cefc4640e50479e9ab1791 "; //oaeóąę#$*
 #else
