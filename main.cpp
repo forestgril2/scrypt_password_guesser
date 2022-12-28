@@ -23,6 +23,7 @@
 const int NUM_THREADS = std::thread::hardware_concurrency();
 
 std::mutex var_mutex;
+std::mutex cout_mutex;
 std::condition_variable var_cv;
 std::vector<std::thread> threads;
 
@@ -135,27 +136,18 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
 
 void worker_thread(int i, std::queue<std::wstring>& var, bool& done)
 {
-    std::cout << "Worker nr:" << i << "created" << std::endl;
-
     while (!done)
     {
-
-        std::cout << "Worker nr:" << i << " will wait" << std::endl;
-
         std::unique_lock lock(var_mutex);
         var_cv.wait(lock, [&var, &done]{ return done || !var.empty(); });
-        
-        std::cout << "Worker nr:" << i << " WOKE UP" << std::endl;
 
         if (done)
         {
-            std::cout << "Worker thread exiting because done, nr:" << i << std::endl;
             return;
         }
         
         if (var.empty())
         {
-            std::cout << "Worker thread continue, variants empty, nr:" << i << std::endl;
             continue;
         }
 
@@ -165,26 +157,25 @@ void worker_thread(int i, std::queue<std::wstring>& var, bool& done)
 
         // Convert back to normal string
         const std::string vstr = wide_to_normal(v);
-        std::cout << "Worker nr:" << i << " will popped " << vstr << std::endl;
 
         const auto result = exec((command + vstr).c_str());
         if (result.starts_with("Password verified.\n"))
         {
-            std::cout << "PASS   : " << vstr << std::endl;
+
+            {
+                std::scoped_lock lock(cout_mutex);
+                std::cout << "PASS   : " << vstr << std::endl;
+            }
             done = true;
             var_cv.notify_all();
-            std::cout << "Worker nr:" << i << " PASS & RETURN " << std::endl;
             return;
         }
         else
         {
+            std::scoped_lock lock(cout_mutex);
             std::cout << "NO PASS: " << vstr << std::endl;
         }
-
-        std::cout << "Worker nr:" << i << " will continue the loop " << std::endl;
     }
-
-    std::cout << "Worker thread finished, nr:" << i << std::endl;
 }
 
 int main(int argc, char *argv[])
@@ -202,7 +193,7 @@ int main(int argc, char *argv[])
     // Setup password and variants
     // const std::string pass = std::string("dupa88ąśćę#$");
     // const std::string pass = std::string("oaeóąę#$*");
-    const std::string pass = std::string("oaEóąę#$8");
+    const std::string pass = std::string("Oaeóąę#$*");
     std::cout << "Initial pass: " << pass << std::endl;
 
     //Print a wide char version of the pass
