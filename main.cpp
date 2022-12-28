@@ -20,7 +20,7 @@
 #include <mutex>
 #include <condition_variable>
 
-const int NUM_THREADS = 12;
+const int NUM_THREADS = std::thread::hardware_concurrency();
 
 std::mutex var_mutex;
 std::condition_variable var_cv;
@@ -133,21 +133,30 @@ const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py
     const std::string command = "python3 /home/space/projects/decrypt-ethereum-keyfile/main.py /home/space/projects/scrypt_password_guesser/UTC--2022-01-22T23-28-24.373Z--013efef911d47e09b85f9df956e6565d0f828622 ";
 #endif
 
-void worker_thread(std::queue<std::wstring>& var, bool& done)
+void worker_thread(int i, std::queue<std::wstring>& var, bool& done)
 {
+    std::cout << "Worker nr:" << i << "created" << std::endl;
+
     while (!done)
     {
+
+        std::cout << "Worker nr:" << i << " will wait" << std::endl;
+
         std::unique_lock lock(var_mutex);
-        var_cv.wait(lock, [&var, done]{ return !var.empty() || done; });
+        var_cv.wait(lock, [&var, &done]{ return done || !var.empty(); });
         
+        std::cout << "Worker nr:" << i << " WOKE UP" << std::endl;
+
         if (done)
         {
+            std::cout << "Worker thread exiting because done, nr:" << i << std::endl;
             return;
         }
         
         if (var.empty())
         {
-            break;
+            std::cout << "Worker thread continue, variants empty, nr:" << i << std::endl;
+            continue;
         }
 
         auto v = var.front();
@@ -156,21 +165,26 @@ void worker_thread(std::queue<std::wstring>& var, bool& done)
 
         // Convert back to normal string
         const std::string vstr = wide_to_normal(v);
+        std::cout << "Worker nr:" << i << " will popped " << vstr << std::endl;
 
-        std::cout << "Trying: " << vstr << std::endl;
         const auto result = exec((command + vstr).c_str());
         if (result.starts_with("Password verified.\n"))
         {
             std::cout << "PASS   : " << vstr << std::endl;
             done = true;
             var_cv.notify_all();
+            std::cout << "Worker nr:" << i << " PASS & RETURN " << std::endl;
             return;
         }
         else
         {
             std::cout << "NO PASS: " << vstr << std::endl;
         }
+
+        std::cout << "Worker nr:" << i << " will continue the loop " << std::endl;
     }
+
+    std::cout << "Worker thread finished, nr:" << i << std::endl;
 }
 
 int main(int argc, char *argv[])
@@ -203,7 +217,7 @@ int main(int argc, char *argv[])
     bool done = false; 
     for (int i = 0; i < NUM_THREADS; i++)
     {
-        threads.emplace_back(worker_thread, std::ref(variants_queue), std::ref(done));
+        threads.emplace_back(worker_thread, i, std::ref(variants_queue), std::ref(done));
     }
 
     std::cout << "Press enter to start" << std::endl;
@@ -218,7 +232,6 @@ int main(int argc, char *argv[])
     }
     // Let know about the queue size and wait for user input ( enter press)
     std::cout << "Queue size: " << variants_queue.size() << std::endl;
-
 
     var_cv.notify_all();
 
