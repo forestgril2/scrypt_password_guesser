@@ -84,20 +84,43 @@ std::set<std::wstring> variantsOneShift(std::wstring&& base)
 
     return out;
 }
+std::set<std::wstring> variantsStartingCapsLock(std::wstring&& base)
+{
+    std::set<std::wstring> out({base});
+    for(int i=0; i<base.length(); ++i)
+    {
+        std::wstring mod(base);
+        mod[i] = ::towupper(mod[i]);
+        out.insert(mod);
+    }
+
+    return out;
+}
+
+std::set<std::wstring> addVariantsWithOneShift(std::set<std::wstring>&& variants)
+{
+    // Now get variants with more shifts
+    std::set<std::wstring> addedShift;
+    for(auto v : variants)
+    {
+        auto v2 = variantsOneShift(std::move(v));
+        addedShift.insert(v2.begin(), v2.end());
+    }
+    //Merge them
+    variants.insert(addedShift.begin(), addedShift.end());
+    return addedShift;
+}
+
 
 std::set<std::wstring> variants(std::wstring&& base)
 {
     // Get variants with one shift
     auto variants = variantsOneShift(std::move(base));
-    // Now get variants with two shifts
-    std::set<std::wstring> twoShifts;
-    for(auto v : variants)
-    {
-        auto v2 = variantsOneShift(std::move(v));
-        twoShifts.insert(v2.begin(), v2.end());
-    }
-    //Merge them
-    variants.insert(twoShifts.begin(), twoShifts.end());
+    // Get variants with second shift
+    addVariantsWithOneShift(std::move(variants));
+    // Get variants with one more shift (3)
+    addVariantsWithOneShift(std::move(variants));
+    
     
     // Get variants with starting caps-lock - n signs
     // Get variants with one alt
@@ -193,7 +216,7 @@ int main(int argc, char *argv[])
     // Setup password and variants
     // const std::string pass = std::string("dupa88ąśćę#$");
     // const std::string pass = std::string("oaeóąę#$*");
-    const std::string pass = std::string("Oaeóąę#$*");
+    const std::string pass = std::string("oAeÓąę#4*");
     std::cout << "Initial pass: " << pass << std::endl;
 
     //Print a wide char version of the pass
