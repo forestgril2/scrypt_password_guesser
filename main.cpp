@@ -116,6 +116,8 @@ std::set<std::wstring> variants(std::wstring&& base)
 {
     // Get variants with one shift
     auto variants = variantsOneShift(std::move(base));
+    // append the original as well
+    variants.insert(base);
     // Get variants with second shift
     addVariantsWithOneShift(std::move(variants));
     // Get variants with one more shift (3)
@@ -152,19 +154,20 @@ std::string wide_to_normal(const std::wstring& wide_string) {
 
     
 #ifdef _WIN32
-const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py D:/Projects/scrypt_password_guesser/UTC--2022-10-04T08-04-22.071Z--54278f2fe320bec308cefc4640e50479e9ab1791 "; //oaeóąę#$*
+// const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py D:/Projects/scrypt_password_guesser/UTC--2022-10-04T08-04-22.071Z--54278f2fe320bec308cefc4640e50479e9ab1791 "; //oaeóąę#$*
+const std::string command = "python D:/Projects/decrypt-ethereum-keyfile/main.py D:/Projects/scrypt_password_guesser/UTC--2022-12-28T12-22-42.377Z--ab1c1f3869041caea5d2acea8076926c9206efcb "; //BardzoDługieHasło1234 
 #else
     const std::string command = "python3 /home/space/projects/decrypt-ethereum-keyfile/main.py /home/space/projects/scrypt_password_guesser/UTC--2022-01-22T23-28-24.373Z--013efef911d47e09b85f9df956e6565d0f828622 ";
 #endif
 
-void worker_thread(int i, std::queue<std::wstring>& var, bool& done)
+void worker_thread(int& variantsLeft, std::queue<std::wstring>& var, std::string& foundPass)
 {
-    while (!done)
+    while (foundPass.empty() && variantsLeft)
     {
         std::unique_lock lock(var_mutex);
-        var_cv.wait(lock, [&var, &done]{ return done || !var.empty(); });
+        var_cv.wait(lock, [&var, &foundPass, &variantsLeft]{ return !foundPass.empty() || !variantsLeft || !var.empty(); });
 
-        if (done)
+        if (!foundPass.empty() || !variantsLeft)
         {
             return;
         }
@@ -184,19 +187,27 @@ void worker_thread(int i, std::queue<std::wstring>& var, bool& done)
         const auto result = exec((command + vstr).c_str());
         if (result.starts_with("Password verified.\n"))
         {
-
+            foundPass = vstr;
             {
                 std::scoped_lock lock(cout_mutex);
-                std::cout << "PASS   : " << vstr << std::endl;
+                variantsLeft--;
+                std::cout << "                                                                            \r" << std::flush;
+                std::cout << "PASS   : " << vstr << " " << variantsLeft << " left\r" << std::flush;
             }
-            done = true;
             var_cv.notify_all();
             return;
         }
         else
         {
             std::scoped_lock lock(cout_mutex);
-            std::cout << "NO PASS: " << vstr << std::endl;
+            variantsLeft--;
+            std::cout << "                                                                            \r" << std::flush;
+            std::cout << "NO PASS: " << vstr << " " << variantsLeft << " left\r" << std::flush;
+            if (!variantsLeft)
+            {
+                var_cv.notify_all();
+                return;
+            }
         }
     }
 }
@@ -216,7 +227,9 @@ int main(int argc, char *argv[])
     // Setup password and variants
     // const std::string pass = std::string("dupa88ąśćę#$");
     // const std::string pass = std::string("oaeóąę#$*");
-    const std::string pass = std::string("oAeÓąę#4*");
+    // const std::string pass = std::string("oaeóąę#$*");
+    const std::string pass = std::string("BardzoDługieHasło1234");
+
     std::cout << "Initial pass: " << pass << std::endl;
 
     //Print a wide char version of the pass
@@ -225,13 +238,14 @@ int main(int argc, char *argv[])
     // Prepare variants
     auto variants = pass_variants(wpass);
     std::cout << "Number of variants: " << variants.size() << std::endl;
+    int variantsLeft = variants.size();
 
     // Prepare the thread pool and the queue for the variants
     std::queue<std::wstring> variants_queue;
-    bool done = false; 
+    std::string foundPass = ""; 
     for (int i = 0; i < NUM_THREADS; i++)
     {
-        threads.emplace_back(worker_thread, i, std::ref(variants_queue), std::ref(done));
+        threads.emplace_back(worker_thread, std::ref(variantsLeft), std::ref(variants_queue), std::ref(foundPass));
     }
 
     std::cout << "Press enter to start" << std::endl;
@@ -241,7 +255,7 @@ int main(int argc, char *argv[])
         std::lock_guard<std::mutex> lock(var_mutex);
         for (auto v : variants)
         {
-            variants_queue.emplace(v);
+            variants_queue.push(v);
         }
     }
     // Let know about the queue size and wait for user input ( enter press)
@@ -254,5 +268,12 @@ int main(int argc, char *argv[])
         t.join();
     }
 
+    std::cout << std::endl;
+    if (foundPass.empty())
+    {
+        std::cout << "No pass found" << std::endl;
+        return 1;
+    }
+    std::cout << "Found pass: " << foundPass << std::endl;
     return 0;
 }
