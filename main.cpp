@@ -3,6 +3,7 @@
 #include <wchar.h>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -42,6 +43,31 @@ std::map<wchar_t, wchar_t> special = {
     {L'9', L'('},
 };
 
+std::map<wchar_t, wchar_t> diacritics = {
+    {L'a', L'ą'},
+    {L'c', L'ć'},
+    {L'e', L'ę'},
+    {L'l', L'ł'},
+    {L'n', L'ń'},
+    {L'o', L'ó'},
+    {L's', L'ś'},
+    {L'u', L'€'},
+    {L'x', L'ź'},
+    {L'z', L'ż'},
+    {L'A', L'Ą'},
+    {L'C', L'Ć'},
+    {L'E', L'Ę'},
+    {L'L', L'Ł'},
+    {L'N', L'Ń'},
+    {L'O', L'Ó'},
+    {L'S', L'Ś'},
+    {L'U', L'€'},
+    {L'X', L'Ź'},
+    {L'Z', L'Ż'},
+};
+
+std::set<std::wint_t> shuffledSpecials = {};
+
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -62,6 +88,46 @@ std::string exec(const char* cmd) {
 }
 
 
+StringSet generateVariantsWithOneMod(std::wstring&& base, std::function<wint_t(wint_t)> modify)
+{
+    StringSet variants({base});
+    for(int i=0; i<base.length(); ++i)
+    {
+        std::wstring modifiedBase(base);
+        modifiedBase[i] = modify(modifiedBase[i]);
+        variants.insert(modifiedBase);
+    }
+
+    return variants;
+}
+
+// Get variants with a shuffled special character
+StringSet generateVariantsWithOneShuffledSpecial(std::wstring&& base)
+{
+    auto alternativeSpecials = [](wint_t c) {
+        if (shuffledSpecials.contains(c))
+        {
+            auto shuffledSpecialsCopy = shuffledSpecials;
+            shuffledSpecialsCopy.erase(c);
+            return shuffledSpecialsCopy;
+        }
+        return std::set<wint_t>({c});
+    };
+
+    StringSet variants({base});
+    for(int i=0; i<base.length(); ++i)
+    {
+        std::wstring modifiedBase(base);
+        for (auto c : alternativeSpecials(modifiedBase[i]))
+        {
+            modifiedBase[i] = c;
+            variants.insert(modifiedBase);
+        }
+    }
+
+    return variants;
+}
+
 // Get variants with one shift
 StringSet generateVariantsWithOneShift(std::wstring&& base)
 {
@@ -73,58 +139,57 @@ StringSet generateVariantsWithOneShift(std::wstring&& base)
          return ::towupper(c);
          else if (::iswdigit(c) || special.contains(c))
              return (wint_t)special.at(c);
-        return (wint_t)L'+';
+        return c;
     };
 
-    StringSet out({base});
-    for(int i=0; i<base.length(); ++i)
-    {
-        std::wstring mod(base);
-        mod[i] = shift(mod[i]);
-        out.insert(mod);
-    }
-
-    return out;
-}
-StringSet variantsStartingCapsLock(std::wstring&& base)
-{
-    StringSet out({base});
-    for(int i=0; i<base.length(); ++i)
-    {
-        std::wstring mod(base);
-        mod[i] = ::towupper(mod[i]);
-        out.insert(mod);
-    }
-
-    return out;
+    return generateVariantsWithOneMod(std::move(base), shift);
 }
 
-StringSet addVariantsWithOneShift(StringSet&& variants)
+//Generate variants with a misplaced alt key
+StringSet generateVariantsWithOneAlt(std::wstring&& base)
 {
-    // Now get variants with more shifts
-    StringSet addedShift;
+    auto alt = [](wint_t c) {
+        if (diacritics.contains(c))
+            return (wint_t)diacritics.at(c);
+        return c;
+    };
+    
+    return generateVariantsWithOneMod(std::move(base), alt);
+}
+
+StringSet multiplyVariantsWithMod(StringSet&& variants, std::function<StringSet(std::wstring&&)> modify)
+{
+    StringSet addedMods;
     for(auto v : variants)
     {
-        auto v2 = generateVariantsWithOneShift(std::move(v));
-        addedShift.insert(v2.begin(), v2.end());
+        auto v2 = modify(std::move(v));
+        addedMods.insert(v2.begin(), v2.end());
     }
     //Merge them
-    variants.insert(addedShift.begin(), addedShift.end());
-    return addedShift;
+    variants.insert(addedMods.begin(), addedMods.end());
+    return addedMods;
 }
-
 
 StringSet generateVariants(std::wstring&& base)
 {
+    auto variants = generateVariantsWithOneShuffledSpecial(std::move(base));
+
+    // Get variants with one alt
+    variants = multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneAlt);
+    // Get variants with second alt
+    variants = multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneAlt);
+    // // Get variants with one more alt (3)
+    // multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneAlt);
+    
     // Get variants with one shift
-    auto variants = generateVariantsWithOneShift(std::move(base));
+    variants = multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneShift);
+    // Get variants with second shift
+    variants = multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneShift);
+    // // Get variants with one more shift (3)
+    // multiplyVariantsWithMod(std::move(variants), generateVariantsWithOneShift);
+    
     // append the original as well
     variants.insert(base);
-    // Get variants with second shift
-    addVariantsWithOneShift(std::move(variants));
-    // Get variants with one more shift (3)
-    addVariantsWithOneShift(std::move(variants));
-    
     
     // Get variants with starting caps-lock - n signs
     // Get variants with one alt
@@ -218,19 +283,38 @@ int main(int argc, char *argv[])
 {
     // Set the current locale to UTF-8
     std::setlocale(LC_ALL, "en_US.UTF-8");
+    
+    if (argc < 2)
+    {
+        std::cout << "Usage: " << argv[0] << " <password>" << std::endl;
+        return 1;
+    }
+    // get specials to shuffle as second argument
+    if (argc > 2)
+    {
+        auto specials = std::string(argv[2]);
+        std::cout << "Specials: " << specials << std::endl;
+        // insert special chars to shuffledSpecials
+        shuffledSpecials.insert(specials.begin(), specials.end());
+    }
 
     // invert digit-special mapping and attach it to the main map
     std::map<wchar_t, wchar_t> special_inv; // = special;
     for (auto& [k, v] : special)
         special_inv[v] = k;
-    special.insert(special_inv.begin(), special_inv.end()); 
-
-
+    special.insert(special_inv.begin(), special_inv.end());
+    
+    // invert diacritics mapping and attach it to the main map
+    std::map<wchar_t, wchar_t> diacritics_inv; // = diacritics;
+    for (auto& [k, v] : diacritics)
+        diacritics_inv[v] = k;
+    diacritics.insert(diacritics_inv.begin(), diacritics_inv.end());
+    
     // Setup password and variants
     // const std::string pass = std::string("dupa88ąśćę#$");
     // const std::string pass = std::string("oaeóąę#$*");
     // const std::string pass = std::string("oaeóąę#$*");
-    const std::string pass = std::string("BardzoDługieHasło1234");
+    const std::string pass = std::string(argv[1]);
 
     std::cout << "Initial pass: " << pass << std::endl;
 
@@ -239,6 +323,12 @@ int main(int argc, char *argv[])
     std::wcout << "Pass as wide string: " << wpass    << std::endl;
     // Prepare variants
     auto variants = pass_variants(wpass);
+    // Print all variants
+    std::cout << "Variants: " << std::endl;
+    for (auto v : variants)
+    {
+        std::wcout << v << std::endl;
+    }
     std::cout << "Number of variants: " << variants.size() << std::endl;
     int variantsLeft = variants.size();
 
