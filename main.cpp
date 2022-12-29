@@ -1,4 +1,4 @@
-﻿#include <array>
+#include <array>
 #include <algorithm>
 #include <wchar.h>
 #include <cstdio>
@@ -19,6 +19,8 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+
+using StringSet = std::set<std::wstring, std::greater<std::wstring>>;
 
 const int NUM_THREADS = std::thread::hardware_concurrency();
 
@@ -61,7 +63,7 @@ std::string exec(const char* cmd) {
 
 
 // Get variants with one shift
-std::set<std::wstring> variantsOneShift(std::wstring&& base)
+StringSet generateVariantsWithOneShift(std::wstring&& base)
 {
     auto shift = [](wint_t c) {
         //  std::wcout << "c: " << c << " iswupper: " << ::iswupper(c) << " iswlower: " << ::iswlower(c) << std::endl;
@@ -74,7 +76,7 @@ std::set<std::wstring> variantsOneShift(std::wstring&& base)
         return (wint_t)L'+';
     };
 
-    std::set<std::wstring> out({base});
+    StringSet out({base});
     for(int i=0; i<base.length(); ++i)
     {
         std::wstring mod(base);
@@ -84,9 +86,9 @@ std::set<std::wstring> variantsOneShift(std::wstring&& base)
 
     return out;
 }
-std::set<std::wstring> variantsStartingCapsLock(std::wstring&& base)
+StringSet variantsStartingCapsLock(std::wstring&& base)
 {
-    std::set<std::wstring> out({base});
+    StringSet out({base});
     for(int i=0; i<base.length(); ++i)
     {
         std::wstring mod(base);
@@ -97,13 +99,13 @@ std::set<std::wstring> variantsStartingCapsLock(std::wstring&& base)
     return out;
 }
 
-std::set<std::wstring> addVariantsWithOneShift(std::set<std::wstring>&& variants)
+StringSet addVariantsWithOneShift(StringSet&& variants)
 {
     // Now get variants with more shifts
-    std::set<std::wstring> addedShift;
+    StringSet addedShift;
     for(auto v : variants)
     {
-        auto v2 = variantsOneShift(std::move(v));
+        auto v2 = generateVariantsWithOneShift(std::move(v));
         addedShift.insert(v2.begin(), v2.end());
     }
     //Merge them
@@ -112,10 +114,10 @@ std::set<std::wstring> addVariantsWithOneShift(std::set<std::wstring>&& variants
 }
 
 
-std::set<std::wstring> variants(std::wstring&& base)
+StringSet generateVariants(std::wstring&& base)
 {
     // Get variants with one shift
-    auto variants = variantsOneShift(std::move(base));
+    auto variants = generateVariantsWithOneShift(std::move(base));
     // append the original as well
     variants.insert(base);
     // Get variants with second shift
@@ -132,9 +134,9 @@ std::set<std::wstring> variants(std::wstring&& base)
     return variants;
 };
 
-std::set<std::wstring> pass_variants(const std::wstring& base)
+StringSet pass_variants(const std::wstring& base)
 {
-    return variants(std::wstring(base));
+    return generateVariants(std::wstring(base));
 };
 std::wstring normal_to_wide(const std::string& str)
 {

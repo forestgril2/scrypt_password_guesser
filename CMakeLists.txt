@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.5)
 
 project(scrypt_password_guesser LANGUAGES CXX)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Set the linker flags to use static libraries
